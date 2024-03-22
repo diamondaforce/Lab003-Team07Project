@@ -15,6 +15,7 @@
 #define ENCODER_RIGHT_B     12                                                 // right encoder B signal is connected to pin 20 GPIO12 (J12)
 #define MODE_BUTTON         0                                                  // GPIO0  pin 27 for Push Button 1
 #define MOTOR_ENABLE_SWITCH 3                                                  // DIP Switch S1-1 pulls Digital pin D3 to ground when on, connected to pin 15 GPIO3 (J3)
+#define POT_R1              1                                                  // when DIP Switch S1-3 is on, Analog AD0 (pin 39) GPIO1 is connected to Poteniometer R1
 #define SMART_LED           21                                                 // when DIP Switch S1-4 is on, Smart LED is connected to pin 23 GPIO21 (J21)
 #define SMART_LED_COUNT     1                                                  // number of SMART LEDs in use
 
@@ -30,6 +31,7 @@ boolean timeUp200msec = false;                                                 /
 unsigned char leftDriveSpeed;                                                  // motor drive speed (0-255)
 unsigned char rightDriveSpeed;                                                 // motor drive speed (0-255)
 unsigned char driveIndex;                                                      // state index for run mode
+unsigned int  robotModeIndex = 0;                                              // robot operational state
 unsigned int modePBDebounce;                                                   // pushbutton debounce timer count
 unsigned long timerCount3sec = 0;                                              // 3 second timer count in milliseconds
 unsigned long timerCount2sec = 0;                                              // 2 second timer count in milliseconds
@@ -107,7 +109,7 @@ void loop() {
           if(modePBDebounce >= 1025) {                                       // if pushbutton was released for 25 mS
             modePBDebounce = 0;                                             // reset debounce timer count
             robotModeIndex++;                                               // switch to next mode
-            robotModeIndex = robotModeIndex & 1;                            // keep mode index between 0 and 7
+            robotModeIndex = robotModeIndex & 1;                            // keep mode index between 0 and 1
             timerCount3sec = 0;                                             // reset 3 second timer count
             timeUp3sec = false;                                             // reset 3 second timer
           }
@@ -151,34 +153,31 @@ void loop() {
             }
 #endif
             if (motorsEnabled) {                                            // run motors only if enabled
-              if (timeUp2sec) {                                            // update drive state after 2 seconds
-                timeUp2sec = false;                                       // reset 2 second timer
-                switch(driveIndex) {                                      // cycle through drive states
-                  case 0: // Stop
-                    Bot.Stop("D1");                                     // drive ID
-                    driveIndex++;                                       // next state: drive forward
-                    break;
+              switch(driveIndex) {                                      // cycle through drive states
+                case 0: // Stop
+                  Bot.Stop("D1");                                     // drive ID
+                  driveIndex++;                                       // next state: drive forward
+                  break;
 
-                  case 1: // Drive forward
-                    Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                    driveIndex++;                                       // next state: drive backward
-                    break;
+                case 1: // Drive forward
+                  Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
+                  driveIndex++;                                       // next state: drive backward
+                  break;
 
-                  case 2: // Drive backward
-                    Bot.Reverse("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                    driveIndex++;                                       // next state: turn left
-                    break;
+                case 2: // Drive backward
+                  Bot.Reverse("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
+                  driveIndex++;                                       // next state: turn left
+                  break;
 
-                  case 3: // Turn left
-                    Bot.Left("D1", leftDriveSpeed, rightDriveSpeed);    // drive ID, left speed, right speed
-                    driveIndex++;                                       // next state: turn right
-                    break;
+                case 3: // Turn left
+                  Bot.Left("D1", leftDriveSpeed, rightDriveSpeed);    // drive ID, left speed, right speed
+                  driveIndex++;                                       // next state: turn right
+                  break;
 
-                  case 4: // Turn right
-                    Bot.Right("D1", leftDriveSpeed, rightDriveSpeed);   // drive ID, left speed, right speed
-                    driveIndex = 0;                                     // next state: stop
-                    break;
-                }
+                case 4: // Turn right
+                  Bot.Right("D1", leftDriveSpeed, rightDriveSpeed);   // drive ID, left speed, right speed
+                  driveIndex = 0;                                     // next state: stop
+                  break;
               }
             }
           }
