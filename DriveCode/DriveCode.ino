@@ -1,5 +1,5 @@
 //#define DEBUG_DRIVE_SPEED    1
-//#define DEBUG_ENCODER_COUNT  1
+#define DEBUG_ENCODER_COUNT  1
 
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
@@ -154,29 +154,32 @@ void loop() {
 #endif
             if (motorsEnabled) {                                            // run motors only if enabled
               switch(driveIndex) {                                      // cycle through drive states
-                case 0: // Stop
-                  Bot.Stop("D1");                                     // drive ID
-                  driveIndex++;                                       // next state: drive forward
-                  break;
-
-                case 1: // Drive forward
+                case 0: // Drive forward
                   Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                  driveIndex++;                                       // next state: drive backward
+                  if (RightEncoder.lRawEncoderCount > 5000) {
+                    driveIndex++;                                       // next state: turn left
+                  }
                   break;
 
-                case 2: // Drive backward
-                  Bot.Reverse("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                  driveIndex++;                                       // next state: turn left
+                case 1: // Turn left
+                  Bot.Left("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
+                  if (RightEncoder.lRawEncoderCount > 5000) {
+                    driveIndex++;                                       // next state: drive forward
+                  }
                   break;
 
-                case 3: // Turn left
-                  Bot.Left("D1", leftDriveSpeed, rightDriveSpeed);    // drive ID, left speed, right speed
-                  driveIndex++;                                       // next state: turn right
+                case 2: // Drive forward
+                  Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
+                  if (RightEncoder.lRawEncoderCount > 5000) {
+                    driveIndex++;                                       // next state: turn right
+                  }
                   break;
 
-                case 4: // Turn right
-                  Bot.Right("D1", leftDriveSpeed, rightDriveSpeed);   // drive ID, left speed, right speed
-                  driveIndex = 0;                                     // next state: stop
+                case 3: // Turn right
+                  Bot.Right("D1", leftDriveSpeed, rightDriveSpeed);    // drive ID, left speed, right speed
+                  if (LeftEncoder.lRawEncoderCount > 5000) {
+                    driveIndex = 0;                                       // next state: drive forward
+                  }
                   break;
               }
             }
