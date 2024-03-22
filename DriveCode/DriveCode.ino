@@ -158,13 +158,17 @@ void loop() {
                   Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
                   if (RightEncoder.lRawEncoderCount > 5000) {
                     driveIndex++;                                       // next state: turn left
+                    LeftEncoder.clearEncoder();                                        // clear encoder counts
+                    RightEncoder.clearEncoder();
                   }
                   break;
 
                 case 1: // Turn left
                   Bot.Left("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                  if (RightEncoder.lRawEncoderCount > 5000) {
+                  if (RightEncoder.lRawEncoderCount < -1900) {
                     driveIndex++;                                       // next state: drive forward
+                    LeftEncoder.clearEncoder();                                        // clear encoder counts
+                    RightEncoder.clearEncoder();
                   }
                   break;
 
@@ -172,13 +176,17 @@ void loop() {
                   Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
                   if (RightEncoder.lRawEncoderCount > 5000) {
                     driveIndex++;                                       // next state: turn right
+                    LeftEncoder.clearEncoder();                                        // clear encoder counts
+                    RightEncoder.clearEncoder();
                   }
                   break;
 
                 case 3: // Turn right
                   Bot.Right("D1", leftDriveSpeed, rightDriveSpeed);    // drive ID, left speed, right speed
-                  if (LeftEncoder.lRawEncoderCount > 5000) {
+                  if (LeftEncoder.lRawEncoderCount > 1800) {
                     driveIndex = 0;                                       // next state: drive forward
+                    LeftEncoder.clearEncoder();                                        // clear encoder counts
+                    RightEncoder.clearEncoder();
                   }
                   break;
               }
