@@ -1,201 +1,216 @@
-//#define DEBUG_DRIVE_SPEED    1
-#define DEBUG_ENCODER_COUNT  1
+// MSE 2202 Lab003-Team 7 - Zachary, Shady, Abdullah
+//#define DEBUG_DRIVE_SPEED    1 // Uncomment to enable drive speed debugging via serial output
+//#define DEBUG_ENCODER_COUNT  1 // Uncomment to enable encoder count debugging via serial output
 
-#include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
-#include <MSE2202_Lib.h>
+#include <Arduino.h> // Include for basic Arduino functions
+#include <Adafruit_NeoPixel.h> // Include for controlling Adafruit NeoPixel LEDs
+#include <MSE2202_Lib.h> // Include custom library for specific motor and encoder functions
 
-#define LEFT_MOTOR_A        35                                                 // GPIO35 pin 28 (J35) Motor 1 A
-#define LEFT_MOTOR_B        36                                                 // GPIO36 pin 29 (J36) Motor 1 B
-#define RIGHT_MOTOR_A       37                                                 // GPIO37 pin 30 (J37) Motor 2 A
-#define RIGHT_MOTOR_B       38                                                 // GPIO38 pin 31 (J38) Motor 2 B
-#define ENCODER_LEFT_A      15                                                 // left encoder A signal is connected to pin 8 GPIO15 (J15)
-#define ENCODER_LEFT_B      16                                                 // left encoder B signal is connected to pin 8 GPIO16 (J16)
-#define ENCODER_RIGHT_A     11                                                 // right encoder A signal is connected to pin 19 GPIO11 (J11)
-#define ENCODER_RIGHT_B     12                                                 // right encoder B signal is connected to pin 20 GPIO12 (J12)
-#define MODE_BUTTON         0                                                  // GPIO0  pin 27 for Push Button 1
-#define MOTOR_ENABLE_SWITCH 3                                                  // DIP Switch S1-1 pulls Digital pin D3 to ground when on, connected to pin 15 GPIO3 (J3)
-#define POT_R1              1                                                  // when DIP Switch S1-3 is on, Analog AD0 (pin 39) GPIO1 is connected to Poteniometer R1
-#define SMART_LED           21                                                 // when DIP Switch S1-4 is on, Smart LED is connected to pin 23 GPIO21 (J21)
-#define SMART_LED_COUNT     1                                                  // number of SMART LEDs in use
+// Motor and Encoder GPIO pin definitions
+#define LEFT_MOTOR_A        35 // GPIO pin for left motor input A
+#define LEFT_MOTOR_B        36 // GPIO pin for left motor input B
+#define RIGHT_MOTOR_A       37 // GPIO pin for right motor input A
+#define RIGHT_MOTOR_B       38 // GPIO pin for right motor input B
+#define ENCODER_LEFT_A      15 // GPIO pin for left encoder input A
+#define ENCODER_LEFT_B      16 // GPIO pin for left encoder input B
+#define ENCODER_RIGHT_A     11 // GPIO pin for right encoder input A
+#define ENCODER_RIGHT_B     12 // GPIO pin for right encoder input B
+#define MODE_BUTTON         0  // GPIO pin for the mode selection button
+#define MOTOR_ENABLE_SWITCH 3  // GPIO pin for motor enable switch
+#define POT_R1              1  // GPIO pin for potentiometer input for speed control
+#define SMART_LED           21 // GPIO pin for controlling smart LED
+#define SMART_LED_COUNT     1  // Number of smart LEDs being used
 
-const int cMinPWM = 150;                                                       // PWM value for minimum speed that turns motor
-const int cMaxPWM = 255;                                                       // PWM value for maximum speed
-const int cLeftAdjust = 0;                                                     // Amount to slow down left motor relative to right
-const int cRightAdjust = 0;                                                    // Amount to slow down right motor relative to left
+// Constants for motor speed control
+const int cMinPWM = 150;    // Minimum PWM value to ensure motor movement
+const int cMaxPWM = 255;    // Maximum PWM value for fastest motor speed
+const int cLeftAdjust = 0;  // Adjustment value for left motor speed, used for fine tuning
+const int cRightAdjust = 0; // Adjustment value for right motor speed, used for fine tuning
 
-boolean motorsEnabled = true;                                                  // motors enabled flag
-boolean timeUp3sec = false;                                                    // 3 second timer elapsed flag
-boolean timeUp2sec = false;                                                    // 2 second timer elapsed flag
-boolean timeUp200msec = false;                                                 // 200 millisecond timer elapsed flag
-unsigned char leftDriveSpeed;                                                  // motor drive speed (0-255)
-unsigned char rightDriveSpeed;                                                 // motor drive speed (0-255)
-unsigned char driveIndex;                                                      // state index for run mode
-unsigned int  robotModeIndex = 0;                                              // robot operational state
-unsigned int modePBDebounce;                                                   // pushbutton debounce timer count
-unsigned long timerCount3sec = 0;                                              // 3 second timer count in milliseconds
-unsigned long timerCount2sec = 0;                                              // 2 second timer count in milliseconds
-unsigned long timerCount200msec = 0;                                           // 200 millisecond timer count in milliseconds
-unsigned long previousMicros;                                                  // last microsecond count
-unsigned long currentMicros;                                                   // current microsecond count
+// Global variables
+boolean motorsEnabled = true;         // Flag to track motor enabled state
+boolean timeUp3sec = false;           // Flag for 3-second timer
+boolean timeUp2sec = false;           // Flag for 2-second timer
+boolean timeUp200msec = false;        // Flag for 200-millisecond timer
+unsigned char leftDriveSpeed;         // Variable to store left motor drive speed
+unsigned char rightDriveSpeed;        // Variable to store right motor drive speed
+unsigned char driveIndex;             // Index to control current drive action
+unsigned int  robotModeIndex = 0;     // Index to control robot operational mode
+unsigned int modePBDebounce;          // Counter for mode button debounce logic
+unsigned long timerCount3sec = 0;     // Counter for 3-second timer
+unsigned long timerCount2sec = 0;     // Counter for 2-second timer
+unsigned long timerCount200msec = 0;  // Counter for 200-millisecond timer
+unsigned long previousMicros;         // Variable to store the last microsecond timestamp
+unsigned long currentMicros;          // Variable to store the current microsecond timestamp
 
-Motion Bot = Motion();                                                         // Instance of Motion for motor control
-Encoders LeftEncoder = Encoders();                                             // Instance of Encoders for left encoder data
-Encoders RightEncoder = Encoders();                                            // Instance of Encoders for right encoder data
+Motion Bot = Motion();                // Instance of Motion class for motor control
+Encoders LeftEncoder = Encoders();    // Instance of Encoders class for left encoder data
+Encoders RightEncoder = Encoders();   // Instance of Encoders class for right encoder data
 
 void setup() {
+  // Initialize serial communication for debugging if enabled
 #if defined DEBUG_DRIVE_SPEED || DEBUG_ENCODER_COUNT
-  Serial.begin(115200);
+  Serial.begin(115200); // Start serial communication at 115200 baud rate
 #endif
    
   // Set up motors and encoders
-  Bot.driveBegin("D1", LEFT_MOTOR_A, LEFT_MOTOR_B, RIGHT_MOTOR_A, RIGHT_MOTOR_B); // set up motors as Drive 1
-  LeftEncoder.Begin(ENCODER_LEFT_A, ENCODER_LEFT_B, &Bot.iLeftMotorRunning ); // set up left encoder
-  RightEncoder.Begin(ENCODER_RIGHT_A, ENCODER_RIGHT_B, &Bot.iRightMotorRunning ); // set up right encoder
+  Bot.driveBegin("D1", LEFT_MOTOR_A, LEFT_MOTOR_B, RIGHT_MOTOR_A, RIGHT_MOTOR_B); // Initialize motor control with specified pins
+  LeftEncoder.Begin(ENCODER_LEFT_A, ENCODER_LEFT_B, &Bot.iLeftMotorRunning ); // Initialize left encoder with specified pins
+  RightEncoder.Begin(ENCODER_RIGHT_A, ENCODER_RIGHT_B, &Bot.iRightMotorRunning ); // Initialize right encoder with specified pins
 
-  pinMode(MOTOR_ENABLE_SWITCH, INPUT_PULLUP);                                 // set up motor enable switch with internal pullup
-  pinMode(MODE_BUTTON, INPUT_PULLUP);                                         // Set up mode pushbutton
-  modePBDebounce = 0;                                                         // reset debounce timer count
+  // Configure input pins with internal pull-up resistors
+  pinMode(MOTOR_ENABLE_SWITCH, INPUT_PULLUP); // Configure motor enable switch as input with internal pull-up
+  pinMode(MODE_BUTTON, INPUT_PULLUP);         // Configure mode selection button as input with internal pull-up
+  modePBDebounce = 0;                         // Initialize debounce counter for mode button
 }
-
 void loop() {
-  long pos[] = {0, 0};                                                         // current motor positions
-  int pot = 0;                                                                 // raw ADC value from pot
+  long pos[] = {0, 0};                // Array to store current motor positions, not used in this snippet
+  int pot = 0;                        // Variable to store raw ADC value from potentiometer
 
-  currentMicros = micros();                                                    // get current time in microseconds
-   if ((currentMicros - previousMicros) >= 1000) {                             // enter when 1 ms has elapsed
-      previousMicros = currentMicros;                                          // record current time in microseconds
+  currentMicros = micros();           // Update current time in microseconds
 
-      // 3 second timer, counts 3000 milliseconds
-      timerCount3sec = timerCount3sec + 1;                                     // increment 3 second timer count
-      if (timerCount3sec > 3000) {                                             // if 3 seconds have elapsed
-        timerCount3sec = 0;                                                    // reset 3 second timer count
-        timeUp3sec = true;                                                     // indicate that 3 seconds have elapsed
-      }
-   
-      // 2 second timer, counts 2000 milliseconds
-      timerCount2sec = timerCount2sec + 1;                                     // increment 2 second timer count
-      if (timerCount2sec > 2000) {                                             // if 2 seconds have elapsed
-         timerCount2sec = 0;                                                   // reset 2 second timer count
-         timeUp2sec = true;                                                    // indicate that 2 seconds have elapsed
-      }
-   
-      // 200 millisecond timer, counts 200 milliseconds
-      timerCount200msec = timerCount200msec + 1;                               // Increment 200 millisecond timer count
-      if(timerCount200msec > 200) {                                            // If 200 milliseconds have elapsed
-         timerCount200msec = 0;                                                // Reset 200 millisecond timer count
-         timeUp200msec = true;                                                 // Indicate that 200 milliseconds have elapsed
-      }
+  // Check if 1 ms has elapsed to perform timing operations
+  if ((currentMicros - previousMicros) >= 1000) {
+    previousMicros = currentMicros;   // Update the last microsecond timestamp for next iteration
 
-      // Mode pushbutton debounce and toggle
-      if (!digitalRead(MODE_BUTTON)) {                                         // if pushbutton GPIO goes LOW (nominal push)
-        // Start debounce
-        if (modePBDebounce <= 25) {                                           // 25 millisecond debounce time
-          modePBDebounce = modePBDebounce + 1;                               // increment debounce timer count
-          if (modePBDebounce > 25) {                                         // if held for at least 25 mS
-            modePBDebounce = 1000;                                          // change debounce timer count to 1 second
-          }
-        }
-        if (modePBDebounce >= 1000) {                                         // maintain 1 second timer count until release
-          modePBDebounce = 1000;
+    // Timer logic for 3 seconds
+    timerCount3sec += 1;              // Increment 3-second timer
+    if (timerCount3sec > 3000) {      // Check if 3 seconds have elapsed
+      timerCount3sec = 0;             // Reset 3-second timer
+      timeUp3sec = true;              // Set flag indicating 3 seconds have elapsed
+    }
+
+    // Timer logic for 2 seconds
+    timerCount2sec += 1;              // Increment 2-second timer
+    if (timerCount2sec > 2000) {      // Check if 2 seconds have elapsed
+      timerCount2sec = 0;             // Reset 2-second timer
+      timeUp2sec = true;              // Set flag indicating 2 seconds have elapsed
+    }
+
+    // Timer logic for 200 milliseconds
+    timerCount200msec += 1;           // Increment 200 millisecond timer
+    if (timerCount200msec > 200) {    // Check if 200 milliseconds have elapsed
+      timerCount200msec = 0;          // Reset 200 millisecond timer
+      timeUp200msec = true;           // Set flag indicating 200 milliseconds have elapsed
+    }
+
+    // Mode pushbutton debounce logic
+    if (!digitalRead(MODE_BUTTON)) {  // If mode button is pressed
+      if (modePBDebounce <= 25) {     // Debounce time of 25 ms not yet passed
+        modePBDebounce += 1;          // Increment debounce counter
+        if (modePBDebounce > 25) {    // Once debounce time has passed
+          modePBDebounce = 1000;      // Set counter to large number to wait for button release
         }
       }
-      else {                                                                   // pushbutton GPIO goes HIGH (nominal release)
-        if(modePBDebounce <= 26) {                                            // if release occurs within debounce interval
-          modePBDebounce = 0;                                                // reset debounce timer count
-        }
-        else {
-          modePBDebounce = modePBDebounce + 1;                               // increment debounce timer count
-          if(modePBDebounce >= 1025) {                                       // if pushbutton was released for 25 mS
-            modePBDebounce = 0;                                             // reset debounce timer count
-            robotModeIndex++;                                               // switch to next mode
-            robotModeIndex = robotModeIndex & 1;                            // keep mode index between 0 and 1
-            timerCount3sec = 0;                                             // reset 3 second timer count
-            timeUp3sec = false;                                             // reset 3 second timer
-          }
-        }
-      }
-
-      // check if drive motors should be powered
-      motorsEnabled = !digitalRead(MOTOR_ENABLE_SWITCH);                       // if SW1-1 is on (low signal), then motors are enabled
-
-      switch(robotModeIndex) {
-        case 0: // Robot stopped
-          Bot.Stop("D1");    
-          LeftEncoder.clearEncoder();                                        // clear encoder counts
-          RightEncoder.clearEncoder();
-          driveIndex = 0;                                                    // reset drive index
-          timeUp2sec = false;                                                // reset 2 second timer
-          break;
-
-        case 1: // Run robot
-          if (timeUp3sec) {                                                  // pause for 3 sec before running case 1 code
-            // Read pot to update drive motor speed
-            pot = analogRead(POT_R1);
-            leftDriveSpeed = map(pot, 0, 4095, cMinPWM, cMaxPWM) - cLeftAdjust;
-            rightDriveSpeed = map(pot, 0, 4095, cMinPWM, cMaxPWM) - cRightAdjust;
-#ifdef DEBUG_DRIVE_SPEED 
-            Serial.print(F(" Left Drive Speed: Pot R1 = "));
-            Serial.print(pot);
-            Serial.print(F(", mapped = "));
-            Serial.println(leftDriveSpeed);
-#endif
-#ifdef DEBUG_ENCODER_COUNT
-            if (timeUp200msec) {
-              timeUp200msec = false;                                       // reset 200 ms timer
-              LeftEncoder.getEncoderRawCount();                            // read left encoder count 
-              RightEncoder.getEncoderRawCount();                           // read right encoder count
-              Serial.print(F("Left Encoder count = "));
-              Serial.print(LeftEncoder.lRawEncoderCount);
-              Serial.print(F("  Right Encoder count = "));
-              Serial.print(RightEncoder.lRawEncoderCount);
-              Serial.print("\n");
-            }
-#endif
-            if (motorsEnabled) {                                            // run motors only if enabled
-              switch(driveIndex) {                                      // cycle through drive states
-                case 0: // Drive forward
-                  Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                  if (RightEncoder.lRawEncoderCount > 5000) {
-                    driveIndex++;                                       // next state: turn left
-                    LeftEncoder.clearEncoder();                                        // clear encoder counts
-                    RightEncoder.clearEncoder();
-                  }
-                  break;
-
-                case 1: // Turn left
-                  Bot.Left("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                  if (RightEncoder.lRawEncoderCount < -1900) {
-                    driveIndex++;                                       // next state: drive forward
-                    LeftEncoder.clearEncoder();                                        // clear encoder counts
-                    RightEncoder.clearEncoder();
-                  }
-                  break;
-
-                case 2: // Drive forward
-                  Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // drive ID, left speed, right speed
-                  if (RightEncoder.lRawEncoderCount > 5000) {
-                    driveIndex++;                                       // next state: turn right
-                    LeftEncoder.clearEncoder();                                        // clear encoder counts
-                    RightEncoder.clearEncoder();
-                  }
-                  break;
-
-                case 3: // Turn right
-                  Bot.Right("D1", leftDriveSpeed, rightDriveSpeed);    // drive ID, left speed, right speed
-                  if (LeftEncoder.lRawEncoderCount > 1800) {
-                    driveIndex = 0;                                       // next state: drive forward
-                    LeftEncoder.clearEncoder();                                        // clear encoder counts
-                    RightEncoder.clearEncoder();
-                  }
-                  break;
-              }
-            }
-          }
-          else {                                                             // stop when motors are disabled
-            Bot.Stop("D1");  
-          }
+    } else {                          // If mode button is released
+      if (modePBDebounce > 25) {      // If button was pressed long enough for debounce
+        modePBDebounce = 0;           // Reset debounce counter
+        robotModeIndex++;             // Change robot mode
+        robotModeIndex &= 1;          // Ensure mode index alternates between 0 and 1
+        // Reset timers and flags associated with mode change
+        timerCount3sec = 0;           
+        timeUp3sec = false;           
       }
     }
+
+    // Check motor enable switch and update motor enabled state
+    motorsEnabled = !digitalRead(MOTOR_ENABLE_SWITCH); // Motors are enabled if switch is ON (connected to ground)
+
+    // Robot operational mode handling
+    switch (robotModeIndex) {
+      case 0: // Robot stopped mode
+        Bot.Stop("D1");                 // Stop both motors
+        LeftEncoder.clearEncoder();     // Clear left encoder counts
+        RightEncoder.clearEncoder();    // Clear right encoder counts
+        driveIndex = 0;                 // Reset drive index for next operation
+        timeUp2sec = false;             // Reset 2-second timer flag
+        break;
+
+      case 1: // Robot run mode
+        if (timeUp3sec) {               // Check if 3-second wait time has elapsed before executing run mode
+          timeUp3sec = false;           // Reset 3-second timer flag
+
+          // Read potentiometer to set motor speeds
+          pot = analogRead(POT_R1);     // Read potentiometer value
+          leftDriveSpeed = map(pot, 0, 4095, cMinPWM, cMaxPWM) - cLeftAdjust; // Map pot value to PWM range for left motor
+          rightDriveSpeed = map(pot, 0, 4095, cMinPWM, cMaxPWM) - cRightAdjust; // Map pot value to PWM range for right motor
+
+          // Debugging output for drive speeds
+#ifdef DEBUG_DRIVE_SPEED
+          Serial.print("Left Drive Speed: Pot R1 = ");
+          Serial.print(pot);
+          Serial.print(", mapped = ");
+          Serial.println(leftDriveSpeed);
+#endif
+
+          // Debugging output for encoder counts, updated every 200 ms
+
+#ifdef DEBUG_ENCODER_COUNT
+          if (timeUp200msec) {
+            timeUp200msec = false; // Reset the 200 ms timer flag
+            // Fetch and print encoder counts for left and right encoders
+            LeftEncoder.getEncoderRawCount();                            
+            RightEncoder.getEncoderRawCount();                           
+            Serial.print("Left Encoder count = ");
+            Serial.print(LeftEncoder.lRawEncoderCount);
+            Serial.print("  Right Encoder count = ");
+            Serial.println(RightEncoder.lRawEncoderCount);
+          }
+#endif
+
+          // Motor control logic based on robot operational mode
+          if (motorsEnabled) { // Check if motor enable switch is ON
+            // Drive logic based on current drive index (state)
+            switch(driveIndex) {
+              case 0: // Drive forward state
+                Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // Command motors to drive forward
+                if (RightEncoder.lRawEncoderCount > 5000) { // Check if right encoder count exceeds threshold
+                  driveIndex++; // Move to next state (turn left)
+                  // Clear encoder counts for next movement
+                  LeftEncoder.clearEncoder();                          
+                  RightEncoder.clearEncoder();
+                }
+                break;
+
+              case 1: // Turn left state
+                Bot.Left("D1", leftDriveSpeed, rightDriveSpeed); // Command motors to turn left
+                if (RightEncoder.lRawEncoderCount < -1900) { // Check if right encoder count goes below negative threshold
+                  driveIndex++; // Move to next state (drive forward)
+                  // Clear encoder counts for next movement
+                  LeftEncoder.clearEncoder();                          
+                  RightEncoder.clearEncoder();
+                }
+                break;
+
+              case 2: // Drive forward state (repeated)
+                Bot.Forward("D1", leftDriveSpeed, rightDriveSpeed); // Command motors to drive forward again
+                if (RightEncoder.lRawEncoderCount > 5000) { // Check if right encoder count exceeds threshold again
+                  driveIndex++; // Move to next state (turn right)
+                  // Clear encoder counts for next movement
+                  LeftEncoder.clearEncoder();                          
+                  RightEncoder.clearEncoder();
+                }
+                break;
+
+              case 3: // Turn right state
+                Bot.Right("D1", leftDriveSpeed, rightDriveSpeed); // Command motors to turn right
+                if (LeftEncoder.lRawEncoderCount > 1800) { // Check if left encoder count exceeds threshold
+                  driveIndex = 0; // Reset to first state (drive forward)
+                  // Clear encoder counts for next movement
+                  LeftEncoder.clearEncoder();                          
+                  RightEncoder.clearEncoder();
+                }
+                break;
+            }
+          } else {
+            // If motors are disabled (e.g., via switch), stop all motor activity
+            Bot.Stop("D1");  
+          }
+        }
+        // End of motor control logic
+      }
+      // End of operational mode handling
+    }
+  // End of timing and control loop
 }
-          
+// End of main program loop
