@@ -19,7 +19,23 @@ const int cServo2Channel     = 6;                     // PWM channel used for th
 const int cSDA               = 47;                    // GPIO pin for I2C data
 const int cSCL               = 48;                    // GPIO pin for I2C clock
 const int cTCSLED            = 14;                    // GPIO pin for LED on TCS34725
-const int cLEDSwitch         = 46;                    // DIP switch S1-2 controls LED on TCS32725    
+const int cLEDSwitch         = 46;                    // DIP switch S1-2 controls LED on TCS32725   
+
+// Variables
+boolean timeUp1sec = false;                                                    // 1 second timer elapsed flag
+boolean timeUp10milli = false;                                                 // 10 millisecond timer elapsed flag
+boolean timeUp100milli = false;                                                // 100 millisecond timer elapsed flag
+boolean timeUp500milli = false; 
+unsigned char sortIndex = 0;
+unsigned long timerCount1sec = 0;                                              // 1 second timer count in milliseconds
+unsigned long timerCount10milli = 0;
+unsigned long timerCount100milli = 0;
+unsigned long timerCount500milli = 0;
+unsigned long previousMicros;                                                  // last microsecond count
+unsigned long currentMicros;                                                   // current microsecond count
+float duration, distance;                                                      // duration and distance measured from HC-SR04
+
+float threshold = 2;
 
 Adafruit_NeoPixel SmartLEDs(cSmartLEDCount, cSmartLED, NEO_RGB + NEO_KHZ800);
 
@@ -64,4 +80,111 @@ void setup() {
     Serial.printf("No TCS34725 found ... check your connections\n");
     tcsFlag = false;
   }
+}
+
+void loop() {
+  currentMicros = micros();                                                    // get current time in microseconds
+  if ((currentMicros - previousMicros) >= 1000) {                              // enter when 1 ms has elapsed
+      previousMicros = currentMicros;                                          // record current time in microseconds
+
+      // 1 second timer, counts 1000 milliseconds
+      timerCount1sec = timerCount1sec + 1;                                     // increment 1 second timer count
+      if (timerCount1sec > 1000) {                                             // if 1 second has elapsed
+        timerCount1sec = 0;                                                    // reset 1 second timer count
+        timeUp1sec = true;                                                     // indicate that 1 second has elapsed
+      }
+
+      // 50 millisecond timer
+      timerCount500milli = timerCount500milli + 1;                             // increment 50 millisecond timer count
+      if (timerCount500milli > 500) {                                          // if 50 milliseconds have elapsed
+        timerCount500milli = 0;                                                // reset 50 millisecond timer count
+        timeUp500milli = true;                                                 // indicate that 50 milliseconds have elapsed
+      }
+
+      // 100 millisecond timer
+      timerCount100milli = timerCount100milli + 1;                             // increment 100 millisecond timer count
+      if (timerCount100milli > 100) {                                          // if 100 milliseconds have elapsed
+        timerCount100milli = 0;                                                // reset 100 millisecond timer count
+        timeUp100milli = true;                                                 // indicate that 100 milliseconds have elapsed
+      }
+
+      // 10 millisecond timer
+      timerCount10milli = timerCount10milli + 1;                               // increment 10 millisecond timer count
+      if (timerCount10milli > 10) {                                           // if 10 milliseconds have elapsed
+        timerCount10milli = 0;                                                 // reset 10 millisecond timer count
+        timeUp10milli = true;                                                  // indicate that 10 milliseconds have elapsed
+      }
+
+      switch (sorterIndex) {
+        case 0:
+          ledcWrite(cServo2Channel, degreesToDutyCycle(90));
+          digitalWrite(cTrigPin, HIGH);
+          if (timeUp10milli) {
+            digitalWrite(cTrigPin, LOW);
+            duration = pulseIn(cEchoPin, HIGH);
+            distance = (duration * 0.0343) / 2;
+            if (distance < threshold) {
+              ledcWrite(cServo1Channel, degreesToDutyCycle(45));
+              timerCount100milli = 0;
+              timerCount1sec = 0;
+              timeUp100milli = false;
+              timeUp1sec = false;
+              sorterIndex++;
+            } else {
+              timeUp10milli = false;
+              timerCount10milli = 0;
+            }
+          }
+          break;
+        case 1:
+          if (timeUp100milli) {
+            ledcWrite(cServo1Channel, degreesToDutyCycle(0));
+          }
+
+          if (timeUp1sec) {
+            uint16_t r, g, b, c;                                // RGBC values from TCS34725
+  
+            digitalWrite(cTCSLED, HIGH);                        // turn on onboard LED
+            if (tcsFlag) {                                      // if colour sensor initialized
+              tcs.getRawData(&r, &g, &b, &c);                   // get raw RGBC values
+
+              if () {
+                ledcWrite(cServo2Channel, degreesToDutyCycle(0));
+                timerCount500milli = 0;
+                timeUp500milli = false;
+                sorterIndex++; 
+              } else if () {
+                ledcWrite(cServo2Channel, degreesToDutyCycle(180));
+                timerCount500milli = 0;
+                timeUp500milli = false;
+                sorterIndex++; 
+              }
+            }
+          }
+          break;
+        case 2:
+          if (timeUp500milli) {
+            ledcWrite(cServo2Channel, degreesToDutyCycle(90));
+            timerCount100milli = 0;
+            timerCount10milli = 0;
+            timeUp100milli = false;
+            timeUp10milli = false;
+            sorterIndex = 0;
+          }
+      }
+  } 
+}
+
+long degreesToDutyCycle(int deg) {
+  const long cMinDutyCycle = 400;                     // duty cycle for 0 degrees
+  const long cMaxDutyCycle = 2100;                    // duty cycle for 180 degrees
+
+  long dutyCycle = map(deg, 0, 180, cMinDutyCycle, cMaxDutyCycle);  // convert to duty cycle
+
+#ifdef OUTPUT_ON
+  float percent = dutyCycle * 0.0061039;              // (dutyCycle / 16383) * 100
+  Serial.printf("Degrees %d, Duty Cycle Val: %ld = %f%%\n", servoPos, dutyCycle, percent);
+#endif
+
+  return dutyCycle;
 }
