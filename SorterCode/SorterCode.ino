@@ -23,12 +23,12 @@ const int cLEDSwitch         = 46;                    // DIP switch S1-2 control
 
 // Variables
 boolean timeUp1sec = false;                                                    // 1 second timer elapsed flag
-boolean timeUp10milli = false;                                                 // 10 millisecond timer elapsed flag
+boolean timeUp50milli = false;                                                 // 10 millisecond timer elapsed flag
 boolean timeUp100milli = false;                                                // 100 millisecond timer elapsed flag
 boolean timeUp500milli = false; 
-unsigned char sortIndex = 0;
+unsigned char sorterIndex = 0;
 unsigned long timerCount1sec = 0;                                              // 1 second timer count in milliseconds
-unsigned long timerCount10milli = 0;
+unsigned long timerCount50milli = 0;
 unsigned long timerCount100milli = 0;
 unsigned long timerCount500milli = 0;
 unsigned long previousMicros;                                                  // last microsecond count
@@ -38,10 +38,6 @@ float duration, distance;                                                      /
 float threshold = 2;
 
 Adafruit_NeoPixel SmartLEDs(cSmartLEDCount, cSmartLED, NEO_RGB + NEO_KHZ800);
-
-unsigned char LEDBrightnessIndex = 0; 
-unsigned char LEDBrightnessLevels[] = {0, 0, 0, 5, 15, 30, 45, 60, 75, 90, 105, 120, 135, 
-                                       150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 5, 0};
 
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);
 bool tcsFlag = 0;                                     // TCS34725 flag: 1 = connected; 0 = not found
@@ -109,54 +105,61 @@ void loop() {
       }
 
       // 10 millisecond timer
-      timerCount10milli = timerCount10milli + 1;                               // increment 10 millisecond timer count
-      if (timerCount10milli > 10) {                                           // if 10 milliseconds have elapsed
-        timerCount10milli = 0;                                                 // reset 10 millisecond timer count
-        timeUp10milli = true;                                                  // indicate that 10 milliseconds have elapsed
+      timerCount50milli = timerCount50milli + 1;                               // increment 10 millisecond timer count
+      if (timerCount50milli > 40) {                                           // if 10 milliseconds have elapsed
+        timerCount50milli = 0;                                                 // reset 10 millisecond timer count
+        timeUp50milli = true;                                                  // indicate that 10 milliseconds have elapsed
       }
+
+      digitalWrite(cTCSLED, HIGH); 
 
       switch (sorterIndex) {
         case 0:
           ledcWrite(cServo2Channel, degreesToDutyCycle(90));
           digitalWrite(cTrigPin, HIGH);
-          if (timeUp10milli) {
-            digitalWrite(cTrigPin, LOW);
-            duration = pulseIn(cEchoPin, HIGH);
-            distance = (duration * 0.0343) / 2;
-            if (distance < threshold) {
-              ledcWrite(cServo1Channel, degreesToDutyCycle(45));
-              timerCount100milli = 0;
-              timerCount1sec = 0;
-              timeUp100milli = false;
-              timeUp1sec = false;
-              sorterIndex++;
-            } else {
-              timeUp10milli = false;
-              timerCount10milli = 0;
-            }
+          if (timeUp500milli) {
+            ledcWrite(cServo1Channel, degreesToDutyCycle(0));
+            timerCount50milli = 0;
+            timerCount1sec = 0;
+            timeUp50milli = false;
+            timeUp1sec = false;
+            sorterIndex++;
           }
           break;
         case 1:
-          if (timeUp100milli) {
-            ledcWrite(cServo1Channel, degreesToDutyCycle(0));
+          if (timeUp50milli) {
+            ledcWrite(cServo1Channel, degreesToDutyCycle(35));
           }
 
           if (timeUp1sec) {
             uint16_t r, g, b, c;                                // RGBC values from TCS34725
   
-            digitalWrite(cTCSLED, HIGH);                        // turn on onboard LED
             if (tcsFlag) {                                      // if colour sensor initialized
               tcs.getRawData(&r, &g, &b, &c);                   // get raw RGBC values
-
-              if () {
+              Serial.printf("R: %d, G: %d, B: %d, C %d\n", r, g, b, c);
+              if (b == 4 && g > 5 && (c > 16 || r == 5)) {
                 ledcWrite(cServo2Channel, degreesToDutyCycle(0));
                 timerCount500milli = 0;
                 timeUp500milli = false;
+                SmartLEDs.setBrightness(150);
+                SmartLEDs.setPixelColor(0, SmartLEDs.Color(0, 255, 0));
+                SmartLEDs.show();
                 sorterIndex++; 
-              } else if () {
+              } else if (r != 6 || g != 6 || b != 4 || c != 16) {
                 ledcWrite(cServo2Channel, degreesToDutyCycle(180));
                 timerCount500milli = 0;
                 timeUp500milli = false;
+                SmartLEDs.setBrightness(150);
+                SmartLEDs.setPixelColor(0, SmartLEDs.Color(255, 0, 0));
+                SmartLEDs.show();
+                sorterIndex++; 
+              } else {
+                ledcWrite(cServo2Channel, degreesToDutyCycle(90));
+                timerCount500milli = 0;
+                timeUp500milli = false;
+                SmartLEDs.setPixelColor(0, SmartLEDs.Color(0,0,0));
+                SmartLEDs.setBrightness(0);                      
+                SmartLEDs.show(); 
                 sorterIndex++; 
               }
             }
@@ -165,10 +168,8 @@ void loop() {
         case 2:
           if (timeUp500milli) {
             ledcWrite(cServo2Channel, degreesToDutyCycle(90));
-            timerCount100milli = 0;
-            timerCount10milli = 0;
-            timeUp100milli = false;
-            timeUp10milli = false;
+            timerCount500milli = 0;
+            timeUp500milli = false;
             sorterIndex = 0;
           }
       }
