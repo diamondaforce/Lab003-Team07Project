@@ -2,7 +2,17 @@
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <MSE2202_Lib.h>
 #include "Adafruit_TCS34725.h"
+
+#define LEFT_MOTOR_A        35                                                 // GPIO35 pin 28 (J35) Motor 1 A
+#define LEFT_MOTOR_B        36                                                 // GPIO36 pin 29 (J36) Motor 1 B
+#define RIGHT_MOTOR_A       37                                                 // GPIO37 pin 30 (J37) Motor 2 A
+#define RIGHT_MOTOR_B       38                                                 // GPIO38 pin 31 (J38) Motor 2 B
+#define ENCODER_LEFT_A      15                                                 // left encoder A signal is connected to pin 8 GPIO15 (J15)
+#define ENCODER_LEFT_B      16                                                 // left encoder B signal is connected to pin 8 GPIO16 (J16)
+#define ENCODER_RIGHT_A     11                                                 // right encoder A signal is connected to pin 19 GPIO11 (J11)
+#define ENCODER_RIGHT_B     12                                                 // right encoder B signal is connected to pin 20 GPIO12 (J12)
 
 void doHeartbeat();
 long degreesToDutyCycle(int deg);
@@ -42,6 +52,10 @@ Adafruit_NeoPixel SmartLEDs(cSmartLEDCount, cSmartLED, NEO_RGB + NEO_KHZ800);
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);
 bool tcsFlag = 0;                                     // TCS34725 flag: 1 = connected; 0 = not found
 
+Motion Bot = Motion();                                                         // Instance of Motion for motor control
+Encoders LeftEncoder = Encoders();                                             // Instance of Encoders for left encoder data
+Encoders RightEncoder = Encoders();                                            // Instance of Encoders for right encoder data
+
 void setup() {
   Serial.begin(115200);                               // Standard baud rate for ESP32 serial monitor
 
@@ -51,6 +65,11 @@ void setup() {
   SmartLEDs.setPixelColor(0, SmartLEDs.Color(0,0,0)); // set pixel colours to black (off)
   SmartLEDs.setBrightness(0);                         // set brightness [0-255]
   SmartLEDs.show();                                   // update LED
+
+  // Set up motors and encoders
+  Bot.driveBegin("D1", LEFT_MOTOR_A, LEFT_MOTOR_B, RIGHT_MOTOR_A, RIGHT_MOTOR_B); // set up motors as Drive 1
+  LeftEncoder.Begin(ENCODER_LEFT_A, ENCODER_LEFT_B, &Bot.iLeftMotorRunning ); // set up left encoder
+  RightEncoder.Begin(ENCODER_RIGHT_A, ENCODER_RIGHT_B, &Bot.iRightMotorRunning ); // set up right encoder
 
   Wire.setPins(cSDA, cSCL);                           // set I2C pins for TCS34725
   pinMode(cTCSLED, OUTPUT);                           // configure GPIO to control LED on TCS34725
@@ -104,14 +123,15 @@ void loop() {
         timeUp100milli = true;                                                 // indicate that 100 milliseconds have elapsed
       }
 
-      // 10 millisecond timer
-      timerCount50milli = timerCount50milli + 1;                               // increment 10 millisecond timer count
-      if (timerCount50milli > 40) {                                           // if 10 milliseconds have elapsed
-        timerCount50milli = 0;                                                 // reset 10 millisecond timer count
-        timeUp50milli = true;                                                  // indicate that 10 milliseconds have elapsed
+      // 40 millisecond timer
+      timerCount50milli = timerCount50milli + 1;                               // increment 40 millisecond timer count
+      if (timerCount50milli > 40) {                                           // if 40 milliseconds have elapsed
+        timerCount50milli = 0;                                                 // reset 40 millisecond timer count
+        timeUp50milli = true;                                                  // indicate that 40 milliseconds have elapsed
       }
 
       digitalWrite(cTCSLED, HIGH); 
+      Bot.Forward("D1", 255, 255);
 
       switch (sorterIndex) {
         case 0:
